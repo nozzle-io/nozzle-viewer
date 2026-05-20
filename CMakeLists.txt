@@ -90,17 +90,8 @@ if(APPLE)
 endif()
 
 if(NOZZLE_VIEWER_BUILD_TESTS)
-    include(FetchContent)
-    FetchContent_Declare(
-        catch2
-        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG v3.5.4
-    )
-    FetchContent_MakeAvailable(catch2)
-
-    add_executable(nozzle_viewer_tests tests/test_main.cpp)
-    target_link_libraries(nozzle_viewer_tests PRIVATE nozzle_viewer_app Catch2::Catch2WithMain)
     include(CTest)
-    include(Catch)
-    catch_discover_tests(nozzle_viewer_tests)
+    add_executable(nozzle_viewer_tests tests/test_main.cpp)
+    target_link_libraries(nozzle_viewer_tests PRIVATE nozzle_viewer_app)
+    add_test(NAME nozzle_viewer_tests COMMAND nozzle_viewer_tests)
 endif()
