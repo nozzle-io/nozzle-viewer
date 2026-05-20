@@ -20,7 +20,7 @@ jobs:
         with:
           submodules: recursive
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNOZZLE_VIEWER_BUILD_TESTS=ON -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNOZZLE_VIEWER_BUILD_TESTS=ON
       - name: Build
         run: cmake --build build --config Release --parallel
       - name: Test
