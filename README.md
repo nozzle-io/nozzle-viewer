@@ -30,3 +30,7 @@ On Linux, install the standard OpenGL/X11/Wayland development packages required 
 Use **Refresh** to rescan senders. **Auto refresh** keeps the sender list current. Grid mode displays all visible sources; single mode focuses one selected source.
 
 Preview requires the sender backend to match the receiver backend used by nozzle on the current platform. Unsupported or incompatible sources remain listed with their connection/acquire error so discovery remains useful even without a live frame.
+
+## Latest build
+
+The `latest` GitHub release is a replaceable development snapshot from `main`. It currently publishes a macOS app zip after macOS, Windows, and Linux CI all pass. Version tags (`v*`) publish immutable versioned macOS app zips.
