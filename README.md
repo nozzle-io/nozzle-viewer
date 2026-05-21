@@ -33,4 +33,4 @@ Preview requires the sender backend to match the receiver backend used by nozzle
 
 ## Latest build
 
-The `latest` GitHub release is a replaceable development snapshot from `main`. It currently publishes a macOS app zip after macOS, Windows, and Linux CI all pass. Version tags (`v*`) publish immutable versioned macOS app zips.
+The `latest` GitHub release is a replaceable development snapshot from `main`. It publishes macOS, Windows x64, and Linux x64 zip artifacts after macOS, Windows, and Linux CI all pass. Version tags (`v*`) publish immutable platform zip artifacts.
