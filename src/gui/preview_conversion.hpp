@@ -2,6 +2,8 @@
 
 #include <nozzle/pixel_access.hpp>
 
+#include <gui/render_backend.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -17,6 +19,8 @@ struct preview_image {
 };
 
 bool is_known_preview_format(nozzle::texture_format format) noexcept;
+const char *preview_status_after_conversion_failure(nozzle::texture_format format) noexcept;
+preview_format converted_preview_upload_format() noexcept;
 
 bool convert_to_rgba8_preview(
     const nozzle::mapped_pixels &source,

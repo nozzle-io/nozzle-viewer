@@ -291,6 +291,14 @@ bool is_known_preview_format(nozzle::texture_format format) noexcept {
         nozzle::resolve_channel_count(format) != 0;
 }
 
+const char *preview_status_after_conversion_failure(nozzle::texture_format format) noexcept {
+    return is_known_preview_format(format) ? "preview conversion failed" : "unsupported preview format";
+}
+
+preview_format converted_preview_upload_format() noexcept {
+    return preview_format::rgba8;
+}
+
 bool convert_to_rgba8_preview(
     const nozzle::mapped_pixels &source,
     preview_image &destination,

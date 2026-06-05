@@ -5,17 +5,31 @@
 #include <nozzle/format_resolve.hpp>
 
 #include <array>
-#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
 using namespace nozzle_viewer;
 
 namespace {
+
+[[noreturn]] void fail_check(const char *condition, const char *file, int line) {
+    std::fprintf(stderr, "check failed: %s:%d: %s\n", file, line, condition);
+    std::exit(1);
+}
+
+void check(bool condition, const char *condition_text, const char *file, int line) {
+    if (!condition) {
+        fail_check(condition_text, file, line);
+    }
+}
+
+#define CHECK(condition) check((condition), #condition, __FILE__, __LINE__)
 
 void test_sender_snapshots_are_sorted_and_deduplicated() {
     std::vector<nozzle::sender_info> senders{
@@ -25,19 +39,19 @@ void test_sender_snapshots_are_sorted_and_deduplicated() {
     };
 
     auto entries = to_source_entries(senders);
-    assert(entries.size() == 2);
-    assert(entries[0].name == "alpha");
-    assert(entries[1].name == "zeta");
+    CHECK(entries.size() == 2);
+    CHECK(entries[0].name == "alpha");
+    CHECK(entries[1].name == "zeta");
 }
 
 void test_source_registry_tracks_generation_and_lookup() {
     source_registry registry;
     registry.set_sources({{"camera", "app", "abc", nozzle::backend_type::opengl}});
 
-    assert(registry.generation() == 1);
-    assert(registry.find_by_id_or_name("abc") != nullptr);
-    assert(registry.find_by_id_or_name("camera") != nullptr);
-    assert(registry.find_by_id_or_name("missing") == nullptr);
+    CHECK(registry.generation() == 1);
+    CHECK(registry.find_by_id_or_name("abc") != nullptr);
+    CHECK(registry.find_by_id_or_name("camera") != nullptr);
+    CHECK(registry.find_by_id_or_name("missing") == nullptr);
 }
 
 void test_viewer_state_keeps_a_valid_focus() {
@@ -46,19 +60,19 @@ void test_viewer_state_keeps_a_valid_focus() {
 
     viewer_state state;
     state.reconcile_focus(registry);
-    assert(state.focused_key() == "id-one");
+    CHECK(state.focused_key() == "id-one");
 
     state.set_mode(display_mode::single);
     registry.set_sources({});
     state.reconcile_focus(registry);
-    assert(state.focused_key().empty());
-    assert(state.mode() == display_mode::grid);
+    CHECK(state.focused_key().empty());
+    CHECK(state.mode() == display_mode::grid);
 }
 
 void test_backend_and_format_names_are_stable() {
-    assert(std::string(backend_name(nozzle::backend_type::dma_buf)) == "DMA-BUF");
-    assert(std::string(format_name(nozzle::texture_format::rgba8_unorm)) == "rgba8_unorm");
-    assert(std::string(format_name(nozzle::texture_format::unknown)) == "unknown");
+    CHECK(std::string(backend_name(nozzle::backend_type::dma_buf)) == "DMA-BUF");
+    CHECK(std::string(format_name(nozzle::texture_format::rgba8_unorm)) == "rgba8_unorm");
+    CHECK(std::string(format_name(nozzle::texture_format::unknown)) == "unknown");
 }
 
 template <typename T>
@@ -81,7 +95,7 @@ std::uint16_t half_bits(float value) {
     if (value == 2.0f) {
         return 0x4000u;
     }
-    assert(false);
+    CHECK(false);
     return 0;
 }
 
@@ -97,18 +111,18 @@ preview_image convert_one_pixel(nozzle::texture_format format, const std::vector
 
     preview_image preview;
     std::string error;
-    assert(convert_to_rgba8_preview(pixels, preview, &error));
-    assert(error.empty());
+    CHECK(convert_to_rgba8_preview(pixels, preview, &error));
+    CHECK(error.empty());
     return preview;
 }
 
-void assert_pixel(const preview_image &image, std::array<std::uint8_t, 4> expected) {
-    assert(image.width == 1);
-    assert(image.height == 1);
-    assert(image.row_stride_bytes == 4);
-    assert(image.pixels.size() == 4);
+void check_pixel(const preview_image &image, std::array<std::uint8_t, 4> expected) {
+    CHECK(image.width == 1);
+    CHECK(image.height == 1);
+    CHECK(image.row_stride_bytes == 4);
+    CHECK(image.pixels.size() == 4);
     for (std::size_t index = 0; index < expected.size(); index = index + 1) {
-        assert(image.pixels[index] == expected[index]);
+        CHECK(image.pixels[index] == expected[index]);
     }
 }
 
@@ -141,7 +155,7 @@ void test_preview_converter_accepts_every_known_format() {
 
     for (auto format : formats) {
         const auto bytes_per_pixel = nozzle::resolve_bytes_per_pixel(format);
-        assert(bytes_per_pixel != 0);
+        CHECK(bytes_per_pixel != 0);
         std::vector<std::uint8_t> bytes(bytes_per_pixel, 0);
         nozzle::mapped_pixels pixels{};
         pixels.data = bytes.data();
@@ -153,18 +167,18 @@ void test_preview_converter_accepts_every_known_format() {
         pixels.cpu_layout = nozzle::resolve_cpu_layout(format);
         preview_image preview;
         std::string error;
-        assert(is_known_preview_format(format));
-        assert(convert_to_rgba8_preview(pixels, preview, &error));
-        assert(error.empty());
-        assert(preview.pixels.size() == 4);
+        CHECK(is_known_preview_format(format));
+        CHECK(convert_to_rgba8_preview(pixels, preview, &error));
+        CHECK(error.empty());
+        CHECK(preview.pixels.size() == 4);
     }
 
-    assert(!is_known_preview_format(nozzle::texture_format::unknown));
+    CHECK(!is_known_preview_format(nozzle::texture_format::unknown));
 }
 
 void test_preview_converter_preserves_bgra_order() {
     const std::vector<std::uint8_t> source{10, 20, 30, 40};
-    assert_pixel(convert_one_pixel(nozzle::texture_format::bgra8_unorm, source), {30, 20, 10, 40});
+    check_pixel(convert_one_pixel(nozzle::texture_format::bgra8_unorm, source), {30, 20, 10, 40});
 }
 
 void test_preview_converter_expands_padded_rows() {
@@ -183,16 +197,16 @@ void test_preview_converter_expands_padded_rows() {
 
     preview_image preview;
     std::string error;
-    assert(convert_to_rgba8_preview(pixels, preview, &error));
-    assert(error.empty());
+    CHECK(convert_to_rgba8_preview(pixels, preview, &error));
+    CHECK(error.empty());
     const std::vector<std::uint8_t> expected{
         1, 0, 0, 255, 2, 0, 0, 255,
         3, 0, 0, 255, 4, 0, 0, 255,
     };
-    assert(preview.width == 2);
-    assert(preview.height == 2);
-    assert(preview.row_stride_bytes == 8);
-    assert(preview.pixels == expected);
+    CHECK(preview.width == 2);
+    CHECK(preview.height == 2);
+    CHECK(preview.row_stride_bytes == 8);
+    CHECK(preview.pixels == expected);
 }
 
 void test_preview_converter_converts_unorm16() {
@@ -201,7 +215,7 @@ void test_preview_converter_converts_unorm16() {
     append_value<std::uint16_t>(source, 32768);
     append_value<std::uint16_t>(source, 65535);
     append_value<std::uint16_t>(source, 65535);
-    assert_pixel(convert_one_pixel(nozzle::texture_format::rgba16_unorm, source), {0, 128, 255, 255});
+    check_pixel(convert_one_pixel(nozzle::texture_format::rgba16_unorm, source), {0, 128, 255, 255});
 }
 
 void test_preview_converter_converts_float_formats() {
@@ -210,32 +224,32 @@ void test_preview_converter_converts_float_formats() {
     append_value<std::uint16_t>(half_source, half_bits(0.5f));
     append_value<std::uint16_t>(half_source, half_bits(1.0f));
     append_value<std::uint16_t>(half_source, half_bits(1.0f));
-    assert_pixel(convert_one_pixel(nozzle::texture_format::rgba16_float, half_source), {0, 128, 255, 255});
+    check_pixel(convert_one_pixel(nozzle::texture_format::rgba16_float, half_source), {0, 128, 255, 255});
 
     std::vector<std::uint8_t> float_source;
     append_value<float>(float_source, -1.0f);
     append_value<float>(float_source, 0.5f);
     append_value<float>(float_source, 2.0f);
     append_value<float>(float_source, 1.0f);
-    assert_pixel(convert_one_pixel(nozzle::texture_format::rgba32_float, float_source), {0, 128, 255, 255});
+    check_pixel(convert_one_pixel(nozzle::texture_format::rgba32_float, float_source), {0, 128, 255, 255});
 
     std::vector<std::uint8_t> nan_source;
     append_value<float>(nan_source, std::numeric_limits<float>::quiet_NaN());
-    assert_pixel(convert_one_pixel(nozzle::texture_format::r32_float, nan_source), {255, 0, 255, 255});
+    check_pixel(convert_one_pixel(nozzle::texture_format::r32_float, nan_source), {255, 0, 255, 255});
 
     std::vector<std::uint8_t> alpha_nan_source;
     append_value<float>(alpha_nan_source, 0.25f);
     append_value<float>(alpha_nan_source, 0.5f);
     append_value<float>(alpha_nan_source, 0.75f);
     append_value<float>(alpha_nan_source, std::numeric_limits<float>::quiet_NaN());
-    assert_pixel(convert_one_pixel(nozzle::texture_format::rgba32_float, alpha_nan_source), {64, 128, 191, 255});
+    check_pixel(convert_one_pixel(nozzle::texture_format::rgba32_float, alpha_nan_source), {64, 128, 191, 255});
 
     std::vector<std::uint8_t> inf_source;
     append_value<float>(inf_source, -std::numeric_limits<float>::infinity());
     append_value<float>(inf_source, 0.5f);
     append_value<float>(inf_source, std::numeric_limits<float>::infinity());
     append_value<float>(inf_source, 1.0f);
-    assert_pixel(convert_one_pixel(nozzle::texture_format::rgba32_float, inf_source), {0, 128, 255, 255});
+    check_pixel(convert_one_pixel(nozzle::texture_format::rgba32_float, inf_source), {0, 128, 255, 255});
 }
 
 void test_preview_converter_converts_uint_and_depth_formats() {
@@ -244,11 +258,11 @@ void test_preview_converter_converts_uint_and_depth_formats() {
     append_value<std::uint32_t>(uint_source, 0x00000001u);
     append_value<std::uint32_t>(uint_source, 0x000000ffu);
     append_value<std::uint32_t>(uint_source, 0x00000102u);
-    assert_pixel(convert_one_pixel(nozzle::texture_format::rgba32_uint, uint_source), {0x78, 0x01, 0xff, 0x02});
+    check_pixel(convert_one_pixel(nozzle::texture_format::rgba32_uint, uint_source), {0x78, 0x01, 0xff, 0x02});
 
     std::vector<std::uint8_t> depth_source;
     append_value<float>(depth_source, 0.5f);
-    assert_pixel(convert_one_pixel(nozzle::texture_format::depth32_float, depth_source), {128, 128, 128, 255});
+    check_pixel(convert_one_pixel(nozzle::texture_format::depth32_float, depth_source), {128, 128, 128, 255});
 }
 
 void test_preview_converter_rejects_only_unknown_format() {
@@ -262,8 +276,15 @@ void test_preview_converter_rejects_only_unknown_format() {
 
     preview_image preview;
     std::string error;
-    assert(!convert_to_rgba8_preview(pixels, preview, &error));
-    assert(error == "unsupported preview format");
+    CHECK(!convert_to_rgba8_preview(pixels, preview, &error));
+    CHECK(error == "unsupported preview format");
+}
+
+void test_preview_status_decision_matches_viewer_gate_regression() {
+    CHECK(std::string(preview_status_after_conversion_failure(nozzle::texture_format::rgba16_float)) == "preview conversion failed");
+    CHECK(std::string(preview_status_after_conversion_failure(nozzle::texture_format::rgba32_float)) == "preview conversion failed");
+    CHECK(std::string(preview_status_after_conversion_failure(nozzle::texture_format::unknown)) == "unsupported preview format");
+    CHECK(converted_preview_upload_format() == preview_format::rgba8);
 }
 
 } // namespace
@@ -280,5 +301,6 @@ int main() {
     test_preview_converter_converts_float_formats();
     test_preview_converter_converts_uint_and_depth_formats();
     test_preview_converter_rejects_only_unknown_format();
+    test_preview_status_decision_matches_viewer_gate_regression();
     return 0;
 }

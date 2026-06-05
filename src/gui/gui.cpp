@@ -233,7 +233,7 @@ void gui::acquire_preview(receiver_session &session) {
     const auto &pixels = mapping.pixels();
     std::string conversion_error;
     if (!convert_to_rgba8_preview(pixels, session.preview_pixels, &conversion_error)) {
-        session.status = is_known_preview_format(info.format) ? "preview conversion failed" : "unsupported preview format";
+        session.status = preview_status_after_conversion_failure(info.format);
         session.error = conversion_error.empty() ? format_name(info.format) : conversion_error;
         session.connected_info = session.receiver->connected_info();
         session.last_frame_index = info.frame_index;
@@ -250,7 +250,7 @@ void gui::acquire_preview(receiver_session &session) {
     if (session.preview_texture) {
         if (backend_->update_preview_texture(session.preview_texture, session.preview_pixels.pixels.data(),
                 session.preview_pixels.width, session.preview_pixels.height,
-                session.preview_pixels.row_stride_bytes, preview_format::rgba8)) {
+                session.preview_pixels.row_stride_bytes, converted_preview_upload_format())) {
             session.status = "live";
             session.error.clear();
         } else {
