@@ -56,6 +56,7 @@ endif()
 
 set(NOZZLE_VIEWER_APP_SOURCES
     src/app/source_registry.cpp
+    src/gui/preview_conversion.cpp
     src/app/viewer_state.cpp
     src/gui/gui.cpp
 )

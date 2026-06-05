@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 
 namespace nozzle_viewer {
 
@@ -20,21 +19,6 @@ constexpr auto k_refresh_interval = std::chrono::milliseconds(1000);
 
 std::string source_key(const source_entry &source) {
     return source.id.empty() ? source.name : source.id;
-}
-
-preview_format preview_format_from_nozzle(nozzle::texture_format format, bool *supported) {
-    *supported = true;
-    switch (format) {
-    case nozzle::texture_format::rgba8_unorm:
-    case nozzle::texture_format::rgba8_srgb:
-        return preview_format::rgba8;
-    case nozzle::texture_format::bgra8_unorm:
-    case nozzle::texture_format::bgra8_srgb:
-        return preview_format::bgra8;
-    default:
-        *supported = false;
-        return preview_format::rgba8;
-    }
 }
 
 } // namespace
@@ -236,36 +220,37 @@ void gui::acquire_preview(receiver_session &session) {
 
     auto &frame = frame_result.value();
     auto info = frame.info();
-    bool supported = false;
-    const auto preview_fmt = preview_format_from_nozzle(info.format, &supported);
-    if (!supported) {
-        session.status = "unsupported preview format";
-        session.error = format_name(info.format);
-        session.connected_info = session.receiver->connected_info();
-        session.last_frame_index = info.frame_index;
-        return;
-    }
-
-    auto pixels_result = nozzle::lock_frame_pixels_with_origin(frame, nozzle::texture_origin::top_left);
-    if (!pixels_result.ok()) {
+    auto mapping_result = nozzle::lock_frame_pixels_mapping_with_origin(frame, nozzle::texture_origin::top_left);
+    if (!mapping_result.ok()) {
         session.status = "pixel readback failed";
-        session.error = pixels_result.error().message;
+        session.error = mapping_result.error().message;
         session.connected_info = session.receiver->connected_info();
         session.last_frame_index = info.frame_index;
         return;
     }
 
-    const auto &pixels = pixels_result.value();
-    if (!session.preview_texture || session.preview_width != pixels.width || session.preview_height != pixels.height) {
+    auto mapping = std::move(mapping_result.value());
+    const auto &pixels = mapping.pixels();
+    std::string conversion_error;
+    if (!convert_to_rgba8_preview(pixels, session.preview_pixels, &conversion_error)) {
+        session.status = is_known_preview_format(info.format) ? "preview conversion failed" : "unsupported preview format";
+        session.error = conversion_error.empty() ? format_name(info.format) : conversion_error;
+        session.connected_info = session.receiver->connected_info();
+        session.last_frame_index = info.frame_index;
+        return;
+    }
+
+    if (!session.preview_texture || session.preview_width != session.preview_pixels.width || session.preview_height != session.preview_pixels.height) {
         destroy_session_texture(session);
-        session.preview_texture = backend_->create_preview_texture(pixels.width, pixels.height);
-        session.preview_width = pixels.width;
-        session.preview_height = pixels.height;
+        session.preview_texture = backend_->create_preview_texture(session.preview_pixels.width, session.preview_pixels.height);
+        session.preview_width = session.preview_pixels.width;
+        session.preview_height = session.preview_pixels.height;
     }
 
     if (session.preview_texture) {
-        if (backend_->update_preview_texture(session.preview_texture, pixels.data, pixels.width, pixels.height,
-                pixels.row_stride_bytes, preview_fmt)) {
+        if (backend_->update_preview_texture(session.preview_texture, session.preview_pixels.pixels.data(),
+                session.preview_pixels.width, session.preview_pixels.height,
+                session.preview_pixels.row_stride_bytes, preview_format::rgba8)) {
             session.status = "live";
             session.error.clear();
         } else {
@@ -275,7 +260,6 @@ void gui::acquire_preview(receiver_session &session) {
         session.status = "texture allocation failed";
     }
 
-    nozzle::unlock_frame_pixels(frame);
     session.connected_info = session.receiver->connected_info();
     session.last_frame_index = info.frame_index;
 }
@@ -420,6 +404,7 @@ void gui::destroy_session_texture(receiver_session &session) {
         backend_->destroy_preview_texture(session.preview_texture);
     }
     session.preview_texture = nullptr;
+    session.preview_pixels = {};
     session.preview_width = 0;
     session.preview_height = 0;
 }

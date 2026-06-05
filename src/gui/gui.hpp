@@ -2,6 +2,7 @@
 
 #include <app/source_registry.hpp>
 #include <app/viewer_state.hpp>
+#include <gui/preview_conversion.hpp>
 #include <gui/render_backend.hpp>
 
 #include <nozzle/receiver.hpp>
@@ -21,6 +22,7 @@ struct receiver_session {
     source_entry source{};
     std::unique_ptr<nozzle::receiver> receiver{};
     void *preview_texture{nullptr};
+    preview_image preview_pixels{};
     std::uint32_t preview_width{0};
     std::uint32_t preview_height{0};
     nozzle::connected_sender_info connected_info{};
