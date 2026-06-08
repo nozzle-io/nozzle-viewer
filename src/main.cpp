@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -300,29 +301,31 @@ int run_smoke_receiver(const smoke_options &options) {
     receiver_desc.application_name = "nozzle-viewer smoke receiver";
     receiver_desc.receive_mode_val = nozzle::receive_mode::sequential_best_effort;
 
-    auto receiver_result = nozzle::receiver::create(receiver_desc);
-    if (!receiver_result) {
-        result.failure_reason = "receiver_create_failed:" + receiver_result.error().message;
-        const nozzle::connected_sender_info empty_info{};
-        write_evidence(options.evidence_path, make_evidence_json(options, result, empty_info));
-        std::fprintf(stderr, "%s\n", result.failure_reason.c_str());
-        return 1;
-    }
-
-    nozzle::receiver receiver = std::move(receiver_result.value());
+    std::unique_ptr<nozzle::receiver> receiver{};
     nozzle::connected_sender_info sender_info{};
+    std::string last_create_error{};
     const auto start = std::chrono::steady_clock::now();
     while (true) {
         const auto now = std::chrono::steady_clock::now();
         const auto elapsed_ms = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count());
         if (options.timeout_ms <= elapsed_ms) {
-            result.failure_reason = "timeout_waiting_for_frame";
+            result.failure_reason = receiver ? "timeout_waiting_for_frame" : "receiver_create_timeout:" + last_create_error;
             break;
+        }
+
+        if (!receiver) {
+            auto receiver_result = nozzle::receiver::create(receiver_desc);
+            if (!receiver_result) {
+                last_create_error = receiver_result.error().message;
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                continue;
+            }
+            receiver = std::make_unique<nozzle::receiver>(std::move(receiver_result.value()));
         }
 
         nozzle::acquire_desc acquire_desc{};
         acquire_desc.timeout_ms = 100u;
-        auto frame_result = receiver.acquire_frame(acquire_desc);
+        auto frame_result = receiver->acquire_frame(acquire_desc);
         if (!frame_result) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
@@ -335,7 +338,7 @@ int run_smoke_receiver(const smoke_options &options) {
         result.observed_frame_index = info.frame_index;
         result.observed_frame_count = result.observed_frame_count + 1u;
         result.dimensions_ok = info.width == options.width && info.height == options.height;
-        sender_info = receiver.connected_info();
+        sender_info = receiver->connected_info();
 
         if (!result.dimensions_ok) {
             result.failure_reason = "dimension_mismatch";
