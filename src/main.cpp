@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -386,18 +387,25 @@ int run_smoke_receiver(const smoke_options &options) {
 
 int main(int argc, char **argv) {
     smoke_options options{};
+    bool wants_smoke_receiver = false;
+    for (int index = 1; index < argc; index = index + 1) {
+        if (std::strcmp(argv[index], "--smoke-receiver") == 0) {
+            wants_smoke_receiver = true;
+            break;
+        }
+    }
+    if (!wants_smoke_receiver) {
+        nozzle_viewer::gui app;
+        if (!app.init()) {
+            std::fprintf(stderr, "failed to initialize nozzle-viewer\n");
+            return 1;
+        }
+        app.run();
+        return 0;
+    }
+
     if (!parse_smoke_options(argc, argv, options)) {
         return 2;
     }
-    if (options.enabled) {
-        return run_smoke_receiver(options);
-    }
-
-    nozzle_viewer::gui app;
-    if (!app.init()) {
-        std::fprintf(stderr, "failed to initialize nozzle-viewer\n");
-        return 1;
-    }
-    app.run();
-    return 0;
+    return run_smoke_receiver(options);
 }
