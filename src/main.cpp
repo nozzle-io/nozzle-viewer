@@ -207,6 +207,8 @@ std::string make_evidence_json(const smoke_options &options, const smoke_result 
     stream << "  \"backend\": \"" << backend_name(sender_info.backend) << "\",\n";
     stream << "  \"role\": \"viewer_receiver\",\n";
     stream << "  \"sender_name\": \"" << json_escape(options.source_name) << "\",\n";
+    stream << "  \"connected_sender_name\": \"" << json_escape(sender_info.name) << "\",\n";
+    stream << "  \"connected_sender_application\": \"" << json_escape(sender_info.application_name) << "\",\n";
     stream << "  \"receiver_name\": \"nozzle-viewer smoke receiver\",\n";
     stream << "  \"dimensions\": {\n";
     stream << "    \"expected_width\": " << options.width << ",\n";
