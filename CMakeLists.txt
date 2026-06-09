@@ -56,6 +56,7 @@ endif()
 
 set(NOZZLE_VIEWER_APP_SOURCES
     src/app/source_registry.cpp
+    src/app/smoke_oracle.cpp
     src/gui/preview_conversion.cpp
     src/app/viewer_state.cpp
     src/gui/gui.cpp
@@ -95,4 +96,11 @@ if(NOZZLE_VIEWER_BUILD_TESTS)
     add_executable(nozzle_viewer_tests tests/test_main.cpp)
     target_link_libraries(nozzle_viewer_tests PRIVATE nozzle_viewer_app)
     add_test(NAME nozzle_viewer_tests COMMAND nozzle_viewer_tests)
+    add_test(
+        NAME nozzle_viewer_smoke_receiver_invalid_bounds_json
+        COMMAND ${CMAKE_COMMAND}
+            -DNOZZLE_VIEWER_EXE=$<TARGET_FILE:nozzle-viewer>
+            -DEVIDENCE_PATH=${CMAKE_CURRENT_BINARY_DIR}/smoke_receiver_invalid_bounds.json
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_smoke_receiver_fail_evidence.cmake
+    )
 endif()

@@ -1,5 +1,6 @@
 #include <gui/gui.hpp>
 #include <gui/preview_conversion.hpp>
+#include <app/smoke_oracle.hpp>
 
 #include <nozzle/pixel_access.hpp>
 #include <nozzle/receiver.hpp>
@@ -30,26 +31,6 @@ struct smoke_options {
     std::string evidence_path{};
 };
 
-struct sample_result {
-    std::string name{};
-    std::uint32_t x{0};
-    std::uint32_t y{0};
-    std::uint8_t expected_r{0};
-    std::uint8_t expected_g{0};
-    std::uint8_t expected_b{0};
-    std::uint8_t expected_a{255};
-    std::uint8_t actual_r{0};
-    std::uint8_t actual_g{0};
-    std::uint8_t actual_b{0};
-    std::uint8_t actual_a{255};
-    bool passed{false};
-};
-
-struct marker_sample_result {
-    std::uint64_t frame_index{0};
-    sample_result sample{};
-};
-
 struct smoke_result {
     bool passed{false};
     std::string failure_reason{};
@@ -71,10 +52,10 @@ struct smoke_result {
     bool alpha_patch_ok{false};
     bool moving_marker_ok{false};
     bool distinct_frames_ok{false};
-    std::vector<sample_result> samples{};
+    std::vector<nozzle_viewer::smoke_sample_result> samples{};
     std::vector<std::uint64_t> observed_frame_indices{};
     std::vector<std::uint32_t> observed_marker_x{};
-    std::vector<marker_sample_result> observed_marker_samples{};
+    std::vector<nozzle_viewer::smoke_marker_sample_result> observed_marker_samples{};
 };
 
 bool parse_u32(const char *text, std::uint32_t &out_value) {
@@ -217,112 +198,6 @@ const char *backend_name(nozzle::backend_type backend) {
     return "Unknown";
 }
 
-bool is_color(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a, std::uint8_t expected_r, std::uint8_t expected_g, std::uint8_t expected_b, std::uint8_t expected_a) {
-    return r == expected_r && g == expected_g && b == expected_b && a == expected_a;
-}
-
-
-std::uint64_t count_distinct_passed_marker_frames(const std::vector<marker_sample_result> &samples) {
-    std::uint64_t count = 0u;
-    std::uint64_t last_frame_index = 0u;
-    bool have_last = false;
-    for (const marker_sample_result &marker_sample : samples) {
-        if (!marker_sample.sample.passed) {
-            continue;
-        }
-        if (!have_last || marker_sample.frame_index != last_frame_index) {
-            count = count + 1u;
-            last_frame_index = marker_sample.frame_index;
-            have_last = true;
-        }
-    }
-    return count;
-}
-
-bool passed_marker_x_changed(const std::vector<marker_sample_result> &samples) {
-    std::uint32_t first_x = 0u;
-    bool have_first = false;
-    for (const marker_sample_result &marker_sample : samples) {
-        if (!marker_sample.sample.passed) {
-            continue;
-        }
-        if (!have_first) {
-            first_x = marker_sample.sample.x;
-            have_first = true;
-            continue;
-        }
-        if (marker_sample.sample.x != first_x) {
-            return true;
-        }
-    }
-    return false;
-}
-
-sample_result sample_pixel(
-    const nozzle_viewer::preview_image &image,
-    const std::string &name,
-    std::uint32_t x,
-    std::uint32_t y,
-    std::uint8_t expected_r,
-    std::uint8_t expected_g,
-    std::uint8_t expected_b,
-    std::uint8_t expected_a = 255u) {
-    sample_result result{};
-    result.name = name;
-    result.x = x;
-    result.y = y;
-    result.expected_r = expected_r;
-    result.expected_g = expected_g;
-    result.expected_b = expected_b;
-    result.expected_a = expected_a;
-    const auto offset = (static_cast<std::size_t>(y) * image.width + x) * 4u;
-    result.actual_r = image.pixels[offset + 0u];
-    result.actual_g = image.pixels[offset + 1u];
-    result.actual_b = image.pixels[offset + 2u];
-    result.actual_a = image.pixels[offset + 3u];
-    result.passed = is_color(result.actual_r, result.actual_g, result.actual_b, result.actual_a, expected_r, expected_g, expected_b, expected_a);
-    return result;
-}
-
-void verify_quadrants(const nozzle_viewer::preview_image &image, const smoke_options &options, smoke_result &result) {
-    const std::uint32_t left_x = image.width / 8u;
-    const std::uint32_t right_x = image.width - 1u - image.width / 8u;
-    const std::uint32_t top_y = image.height / 8u;
-    const std::uint32_t bottom_y = image.height - 1u - image.height / 8u;
-
-    result.samples.push_back(sample_pixel(image, "top_left_red", left_x, top_y, 255u, 0u, 0u));
-    result.samples.push_back(sample_pixel(image, "top_right_green", right_x, top_y, 0u, 255u, 0u));
-    result.samples.push_back(sample_pixel(image, "bottom_left_blue", left_x, bottom_y, 0u, 0u, 255u));
-    result.samples.push_back(sample_pixel(image, "bottom_right_white", right_x, bottom_y, 255u, 255u, 255u));
-    if (options.expect_alpha_patch) {
-        result.samples.push_back(sample_pixel(image, "center_magenta_alpha_patch", image.width / 2u, (image.height / 2u) - (image.height / 16u), 255u, 0u, 255u, 64u));
-    }
-    if (options.expect_moving_marker) {
-        const std::uint64_t source_frame_index = result.observed_frame_index == 0 ? 0 : result.observed_frame_index - 1u;
-        const std::uint32_t marker_x = static_cast<std::uint32_t>((source_frame_index * 29u) % (image.width - 24u)) + 12u;
-        sample_result marker_sample = sample_pixel(image, "moving_yellow_marker", marker_x, 144u, 255u, 255u, 0u, 255u);
-        result.samples.push_back(marker_sample);
-        result.observed_marker_samples.push_back(marker_sample_result{result.observed_frame_index, marker_sample});
-        if (marker_sample.passed) {
-            result.observed_marker_x.push_back(marker_x);
-        }
-    }
-
-    result.top_left_red = result.samples[0].passed;
-    result.top_right_green = result.samples[1].passed;
-    result.bottom_left_blue = result.samples[2].passed;
-    result.bottom_right_white = result.samples[3].passed;
-    result.alpha_patch_ok = !options.expect_alpha_patch || (4u < result.samples.size() && result.samples[4].passed);
-    const std::size_t marker_sample_index = options.expect_alpha_patch ? 5u : 4u;
-    result.moving_marker_ok = !options.expect_moving_marker || (
-        marker_sample_index < result.samples.size() &&
-        result.samples[marker_sample_index].passed &&
-        options.min_frames <= count_distinct_passed_marker_frames(result.observed_marker_samples) &&
-        passed_marker_x_changed(result.observed_marker_samples));
-    result.orientation_ok = result.top_left_red && result.top_right_green && result.bottom_left_blue && result.bottom_right_white;
-    result.channel_order_ok = result.top_left_red && result.bottom_left_blue;
-}
-
 std::string make_evidence_json(const smoke_options &options, const smoke_result &result, const nozzle::connected_sender_info &sender_info) {
     std::ostringstream stream;
     stream << "{\n";
@@ -363,12 +238,13 @@ std::string make_evidence_json(const smoke_options &options, const smoke_result 
     stream << "],\n";
     stream << "    \"observed_marker_samples\": [\n";
     for (std::size_t index = 0; index < result.observed_marker_samples.size(); index = index + 1u) {
-        const marker_sample_result &marker_sample = result.observed_marker_samples[index];
-        const sample_result &sample = marker_sample.sample;
+        const nozzle_viewer::smoke_marker_sample_result &marker_sample = result.observed_marker_samples[index];
+        const nozzle_viewer::smoke_sample_result &sample = marker_sample.sample;
         stream << "      {\"frame_index\":" << marker_sample.frame_index << ",\"x\":" << sample.x << ",\"y\":" << sample.y;
         stream << ",\"expected_rgba\":[" << static_cast<int>(sample.expected_r) << "," << static_cast<int>(sample.expected_g) << "," << static_cast<int>(sample.expected_b) << "," << static_cast<int>(sample.expected_a) << "]";
         stream << ",\"actual_rgba\":[" << static_cast<int>(sample.actual_r) << "," << static_cast<int>(sample.actual_g) << "," << static_cast<int>(sample.actual_b) << "," << static_cast<int>(sample.actual_a) << "]";
-        stream << ",\"passed\":" << (sample.passed ? "true" : "false") << "}";
+        stream << ",\"passed\":" << (sample.passed ? "true" : "false");
+        stream << ",\"failure_reason\":\"" << json_escape(sample.failure_reason) << "\"}";
         if (index + 1u < result.observed_marker_samples.size()) {
             stream << ",";
         }
@@ -394,11 +270,12 @@ std::string make_evidence_json(const smoke_options &options, const smoke_result 
     stream << "  },\n";
     stream << "  \"samples\": [\n";
     for (std::size_t index = 0; index < result.samples.size(); index = index + 1u) {
-        const sample_result &sample = result.samples[index];
+        const nozzle_viewer::smoke_sample_result &sample = result.samples[index];
         stream << "    {\"name\":\"" << json_escape(sample.name) << "\",\"x\":" << sample.x << ",\"y\":" << sample.y;
         stream << ",\"expected_rgba\":[" << static_cast<int>(sample.expected_r) << "," << static_cast<int>(sample.expected_g) << "," << static_cast<int>(sample.expected_b) << "," << static_cast<int>(sample.expected_a) << "]";
         stream << ",\"actual_rgba\":[" << static_cast<int>(sample.actual_r) << "," << static_cast<int>(sample.actual_g) << "," << static_cast<int>(sample.actual_b) << "," << static_cast<int>(sample.actual_a) << "]";
-        stream << ",\"passed\":" << (sample.passed ? "true" : "false") << "}";
+        stream << ",\"passed\":" << (sample.passed ? "true" : "false");
+        stream << ",\"failure_reason\":\"" << json_escape(sample.failure_reason) << "\"}";
         if (index + 1u < result.samples.size()) {
             stream << ",";
         }
@@ -427,6 +304,19 @@ bool write_evidence(const std::string &path, const std::string &json) {
 int run_smoke_receiver(const smoke_options &options) {
     smoke_result result{};
     result.timeout_ms = options.timeout_ms;
+
+    std::string validation_failure{};
+    if (!nozzle_viewer::validate_smoke_dimensions(options.width, options.height, options.expect_alpha_patch, options.expect_moving_marker, validation_failure)) {
+        result.failure_reason = validation_failure;
+        nozzle::connected_sender_info sender_info{};
+        const std::string json = make_evidence_json(options, result, sender_info);
+        if (!write_evidence(options.evidence_path, json)) {
+            std::fprintf(stderr, "failed to write evidence: %s\n", options.evidence_path.c_str());
+            return 1;
+        }
+        std::fprintf(stderr, "nozzle-viewer smoke receiver FAIL: %s\n", result.failure_reason.c_str());
+        return 1;
+    }
 
     nozzle::receiver_desc receiver_desc{};
     receiver_desc.name = options.source_name;
@@ -499,17 +389,26 @@ int run_smoke_receiver(const smoke_options &options) {
         }
         mapping.unlock();
 
-        result.samples.clear();
-        result.top_left_red = false;
-        result.top_right_green = false;
-        result.bottom_left_blue = false;
-        result.bottom_right_white = false;
-        result.orientation_ok = false;
-        result.channel_order_ok = false;
-        result.alpha_patch_ok = false;
-        result.moving_marker_ok = false;
         result.distinct_frames_ok = options.min_frames <= result.distinct_frame_count;
-        verify_quadrants(preview, options, result);
+        nozzle_viewer::smoke_oracle_options oracle_options{};
+        oracle_options.expect_alpha_patch = options.expect_alpha_patch;
+        oracle_options.expect_moving_marker = options.expect_moving_marker;
+        oracle_options.min_frames = options.min_frames;
+        nozzle_viewer::smoke_oracle_state oracle_state{};
+        oracle_state.observed_marker_x = result.observed_marker_x;
+        oracle_state.observed_marker_samples = result.observed_marker_samples;
+        verify_smoke_pattern(preview, oracle_options, result.observed_frame_index, oracle_state);
+        result.samples = oracle_state.samples;
+        result.observed_marker_x = oracle_state.observed_marker_x;
+        result.observed_marker_samples = oracle_state.observed_marker_samples;
+        result.top_left_red = oracle_state.top_left_red;
+        result.top_right_green = oracle_state.top_right_green;
+        result.bottom_left_blue = oracle_state.bottom_left_blue;
+        result.bottom_right_white = oracle_state.bottom_right_white;
+        result.orientation_ok = oracle_state.orientation_ok;
+        result.channel_order_ok = oracle_state.channel_order_ok;
+        result.alpha_patch_ok = oracle_state.alpha_patch_ok;
+        result.moving_marker_ok = oracle_state.moving_marker_ok;
         result.passed = result.dimensions_ok && result.orientation_ok && result.channel_order_ok && result.alpha_patch_ok && result.moving_marker_ok && result.distinct_frames_ok;
         if (result.passed) {
             result.failure_reason.clear();

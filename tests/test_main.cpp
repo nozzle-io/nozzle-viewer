@@ -1,6 +1,7 @@
 #include <app/source_registry.hpp>
 #include <app/viewer_state.hpp>
 #include <gui/preview_conversion.hpp>
+#include <app/smoke_oracle.hpp>
 
 #include <nozzle/format_resolve.hpp>
 
@@ -287,6 +288,36 @@ void test_preview_status_decision_matches_viewer_gate_regression() {
     CHECK(converted_preview_upload_format() == preview_format::rgba8);
 }
 
+void test_smoke_oracle_accepts_320x240_contract() {
+    std::string failure_reason;
+    CHECK(validate_smoke_dimensions(320, 240, true, true, failure_reason));
+    CHECK(failure_reason.empty());
+}
+
+void test_smoke_oracle_rejects_too_small_marker_width() {
+    std::string failure_reason;
+    CHECK(!validate_smoke_dimensions(24, 240, false, true, failure_reason));
+    CHECK(failure_reason.find("moving_marker_width_too_small") != std::string::npos);
+}
+
+void test_smoke_oracle_rejects_too_small_marker_height() {
+    std::string failure_reason;
+    CHECK(!validate_smoke_dimensions(320, 144, false, true, failure_reason));
+    CHECK(failure_reason.find("moving_marker_height_too_small") != std::string::npos);
+}
+
+void test_smoke_oracle_reports_alpha_sample_out_of_range() {
+    preview_image image{};
+    image.width = 4;
+    image.height = 4;
+    image.row_stride_bytes = 16;
+    image.pixels.assign(4u * 4u * 4u, 0u);
+
+    const smoke_sample_result sample = sample_smoke_pixel(image, "center_magenta_alpha_patch", 4, 1, 255u, 0u, 255u, 64u);
+    CHECK(!sample.passed);
+    CHECK(sample.failure_reason.find("sample_out_of_bounds") != std::string::npos);
+}
+
 } // namespace
 
 int main() {
@@ -302,5 +333,9 @@ int main() {
     test_preview_converter_converts_uint_and_depth_formats();
     test_preview_converter_rejects_only_unknown_format();
     test_preview_status_decision_matches_viewer_gate_regression();
+    test_smoke_oracle_accepts_320x240_contract();
+    test_smoke_oracle_rejects_too_small_marker_width();
+    test_smoke_oracle_rejects_too_small_marker_height();
+    test_smoke_oracle_reports_alpha_sample_out_of_range();
     return 0;
 }
