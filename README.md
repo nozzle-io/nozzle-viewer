@@ -53,3 +53,5 @@ values.
 ## Latest build
 
 The `latest` GitHub release is a replaceable development snapshot from `main`. It publishes macOS, Windows x64, and Linux x64 zip artifacts after macOS, Windows, and Linux CI all pass. Version tags (`v*`) publish immutable platform zip artifacts.
+
+The published Linux x64 build targets **x86-64-v2** (no AVX, AVX2, FMA or F16C). CI sets this explicitly and verifies the binary with `nozzle/scripts/check_x86_64_isa.sh`.
