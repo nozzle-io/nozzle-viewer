@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build-macos:
     name: macOS
-    runs-on: macos-14
+    runs-on: macos-15
     outputs:
       package_root: ${{ steps.meta.outputs.package_root }}
       package_name: ${{ steps.meta.outputs.package_name }}
