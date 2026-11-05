@@ -125,6 +125,11 @@ jobs:
   build-linux:
     name: Linux
     runs-on: ubuntu-latest
+    env:
+      # nozzle-dev#196: published Linux binaries target x86-64-v2 explicitly, not
+      # the image compiler's default (x86-64-v3 on ubuntu-26.04).
+      CFLAGS: -march=x86-64-v2 -mtune=generic
+      CXXFLAGS: -march=x86-64-v2 -mtune=generic
     outputs:
       package_root: ${{ steps.meta.outputs.package_root }}
       package_name: ${{ steps.meta.outputs.package_name }}
@@ -155,6 +160,8 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Test
         run: ctest --test-dir build --output-on-failure -C Release
+      - name: Verify x86-64-v2 ISA baseline
+        run: bash nozzle/scripts/check_x86_64_isa.sh build/nozzle-viewer
       - name: Prepare package metadata
         id: meta
         run: |
