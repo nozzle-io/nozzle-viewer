@@ -11,7 +11,10 @@ normal console CRT startup; MinGW targets select Unicode startup with `-municode
 CI launches separate sender and receiver `nozzle-viewer.exe` processes with Japanese and supplementary Unicode source names and requires exact connected identity plus the existing smoke pixel checks. Unpaired UTF-16 surrogates must fail before parsing. Backend/setup failures fail this check rather than becoming skips.
 
 Run the command in the Windows Unicode CLI step of `.github/workflows/ci.yml`
-against that job's built executable. These checks do not establish Unicode
-filesystem-path support or interactive console font/code-page behavior.
+against that job's built executable. Both evidence files use Japanese and
+supplementary Unicode directory and file names and must contain the expected
+successful results. Windows evidence streams use `std::filesystem::u8path`;
+non-Windows file opens are unchanged. This does not establish interactive console
+font/code-page behavior.
 
 Contract: [Microsoft WideCharToMultiByte documentation](https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte).

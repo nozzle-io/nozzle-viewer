@@ -22,6 +22,10 @@
 #include <thread>
 #include <vector>
 
+#if defined(_WIN32)
+#include <filesystem>
+#endif
+
 namespace {
 
 struct smoke_options {
@@ -334,7 +338,11 @@ bool write_evidence(const std::string &path, const std::string &json) {
         std::printf("%s", json.c_str());
         return true;
     }
+#if defined(_WIN32)
+    std::ofstream stream(std::filesystem::u8path(path), std::ios::binary);
+#else
     std::ofstream stream(path, std::ios::binary);
+#endif
     if (!stream) {
         return false;
     }

@@ -45,8 +45,10 @@ def main():
     check_invalid_utf16(args.exe)
     name = "\u65e5\u672c \U0001f680 \"252\"-" + uuid.uuid4().hex[:8]
     with tempfile.TemporaryDirectory(prefix="nozzle-argv-") as directory:
-        sender_json = Path(directory) / "sender.json"
-        receiver_json = Path(directory) / "receiver.json"
+        unicode_dir = Path(directory) / "\u65e5\u672c-\U0001f680"
+        unicode_dir.mkdir()
+        sender_json = unicode_dir / "\u9001\U0001f680.json"
+        receiver_json = unicode_dir / "\u53d7\U0001f680.json"
         sender = subprocess.Popen([
             str(args.exe), "--smoke-sender", "--source", name,
             "--width", "320", "--height", "240", "--frames", "600",
@@ -70,7 +72,7 @@ def main():
                 raise AssertionError(f"sender identity did not match: {record!r}")
         finally:
             stop(sender)
-    print("PASS Windows Unicode sender/receiver exact identity and smoke pixels; strict rejection")
+    print("PASS Windows Unicode sender/receiver identity, evidence paths and smoke pixels; strict rejection")
 
 
 if __name__ == "__main__":
