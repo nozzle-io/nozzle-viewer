@@ -87,6 +87,12 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Test
         run: ctest --test-dir build --output-on-failure -C Release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Windows Unicode sender and receiver identity
+        timeout-minutes: 2
+        run: python tests/windows_cli_utf8.py --exe build/Release/nozzle-viewer.exe
       - name: Prepare package metadata
         id: meta
         shell: pwsh

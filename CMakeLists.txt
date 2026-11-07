@@ -79,6 +79,9 @@ target_compile_options(nozzle_viewer_app PRIVATE
 )
 
 add_executable(nozzle-viewer src/main.cpp)
+if(MINGW)
+    target_link_options(nozzle-viewer PRIVATE -municode)
+endif()
 target_link_libraries(nozzle-viewer PRIVATE nozzle_viewer_app)
 
 if(APPLE)

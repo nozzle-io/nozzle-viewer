@@ -1,3 +1,5 @@
+#include "windows_utf8_argv.hpp"
+
 #include <gui/gui.hpp>
 #include <gui/preview_conversion.hpp>
 #include <app/smoke_oracle.hpp>
@@ -19,6 +21,10 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#if defined(_WIN32)
+#include <filesystem>
+#endif
 
 namespace {
 
@@ -332,7 +338,11 @@ bool write_evidence(const std::string &path, const std::string &json) {
         std::printf("%s", json.c_str());
         return true;
     }
+#if defined(_WIN32)
+    std::ofstream stream(std::filesystem::u8path(path), std::ios::binary);
+#else
     std::ofstream stream(path, std::ios::binary);
+#endif
     if (!stream) {
         return false;
     }
@@ -776,7 +786,18 @@ int run_smoke_receiver(const smoke_options &options) {
 
 } // namespace
 
+#if defined(_WIN32)
+int wmain(int argc, wchar_t **wide_argv) {
+    windows_utf8_argv converted;
+    if(!converted.assign(argc, wide_argv)) {
+        std::fprintf(stderr, "Invalid UTF-16 command line (Win32 error %lu)\n",
+            static_cast<unsigned long>(GetLastError()));
+        return 2;
+    }
+    char **argv = converted.data();
+#else
 int main(int argc, char **argv) {
+#endif
     smoke_options options{};
     bool wants_smoke_receiver = false;
     bool wants_smoke_sender = false;
