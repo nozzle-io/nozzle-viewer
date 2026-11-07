@@ -43,6 +43,7 @@ struct smoke_sender_result {
     bool passed{false};
     std::string failure_reason{};
     std::uint64_t published_count{0};
+    std::uint64_t busy_timeouts{0};
     std::uint32_t observed_width{0};
     std::uint32_t observed_height{0};
     int mapped_format{0};
@@ -165,7 +166,7 @@ bool parse_smoke_options(int argc, char **argv, smoke_options &options) {
             options.expect_moving_marker = true;
         } else if (std::strcmp(arg, "--help") == 0) {
             std::printf("Usage: nozzle-viewer [--smoke-receiver --source NAME --width N --height N --min-frames N --timeout-ms N --evidence PATH --expect-alpha-patch --expect-moving-marker]\n");
-            std::printf("       nozzle-viewer --smoke-sender --source NAME --width N --height N --frames N --interval-ms N --evidence PATH\n");
+            std::printf("       nozzle-viewer --smoke-sender --source NAME --width N --height N --frames N --interval-ms N --timeout-ms N --evidence PATH\n");
             return false;
         } else {
             std::fprintf(stderr, "unknown option: %s\n", arg);
@@ -182,7 +183,7 @@ bool parse_smoke_options(int argc, char **argv, smoke_options &options) {
 void print_usage() {
     std::printf("Usage: nozzle-viewer [--help]\n");
     std::printf("       nozzle-viewer --smoke-receiver --source NAME --width N --height N --min-frames N --timeout-ms N --evidence PATH [--expect-alpha-patch] [--expect-moving-marker]\n");
-    std::printf("       nozzle-viewer --smoke-sender --source NAME --width N --height N --frames N --interval-ms N --evidence PATH\n");
+    std::printf("       nozzle-viewer --smoke-sender --source NAME --width N --height N --frames N --interval-ms N --timeout-ms N --evidence PATH\n");
 }
 
 std::string json_escape(const std::string &text) {
@@ -360,6 +361,8 @@ std::string make_sender_evidence_json(const smoke_options &options, const smoke_
     stream << "  \"frame\": {\n";
     stream << "    \"requested_count\": " << options.frame_count << ",\n";
     stream << "    \"published_count\": " << result.published_count << ",\n";
+    stream << "    \"busy_timeouts\": " << result.busy_timeouts << ",\n";
+    stream << "    \"busy_timeout_ms_per_frame\": " << options.timeout_ms << ",\n";
     stream << "    \"interval_ms\": " << options.interval_ms << "\n";
     stream << "  },\n";
     stream << "  \"mapping\": {\n";
@@ -550,9 +553,28 @@ int run_smoke_sender(const smoke_options &options) {
     texture_desc.semantic_format = nozzle::texture_format::rgba8_unorm;
     texture_desc.usage = nozzle::texture_usage::shader_read | nozzle::texture_usage::shared;
 
-    for (std::uint64_t frame_index = 0u; frame_index < options.frame_count; frame_index = frame_index + 1u) {
+    std::uint64_t commit_attempts = 0;
+    auto progress_start = std::chrono::steady_clock::now();
+    const auto retry_busy = [&] {
+        result.busy_timeouts += 1;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - progress_start).count();
+        if (static_cast<std::uint64_t>(elapsed) >= options.timeout_ms) return false;
+        const auto remaining = options.timeout_ms - static_cast<std::uint64_t>(elapsed);
+        std::this_thread::sleep_for(std::chrono::milliseconds(
+            std::min<std::uint64_t>(std::max<std::uint64_t>(1, options.interval_ms), remaining)));
+        const auto after_wait = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - progress_start).count();
+        return static_cast<std::uint64_t>(after_wait) < options.timeout_ms;
+    };
+    while (result.published_count < options.frame_count) {
         auto frame_result = sender.acquire_writable_frame(texture_desc);
         if (!frame_result) {
+            if (frame_result.error().code == nozzle::ErrorCode::Timeout) {
+                if (retry_busy()) continue;
+                result.failure_reason = "acquire_busy_timeout";
+                break;
+            }
             result.failure_reason = "acquire_writable_frame_failed:" + frame_result.error().message;
             break;
         }
@@ -569,7 +591,7 @@ int run_smoke_sender(const smoke_options &options) {
         result.observed_height = pixels.height;
         result.mapped_format = static_cast<int>(pixels.format);
         result.mapped_row_stride_bytes = static_cast<std::int64_t>(pixels.row_stride_bytes);
-        if (!draw_sender_pattern(pixels, frame_index)) {
+        if (!draw_sender_pattern(pixels, commit_attempts)) {
             mapping.unlock();
             sender.discard_frame(frame);
             result.failure_reason = "draw_sender_pattern_failed";
@@ -581,13 +603,22 @@ int run_smoke_sender(const smoke_options &options) {
             result.failure_reason = "unlock_writable_pixels_failed:" + unlock_result.error().message;
             break;
         }
+        // A timed-out commit can consume a core frame index, but not a success.
+        commit_attempts += 1;
         auto commit_result = sender.commit_frame(frame);
         if (!commit_result) {
+            if (frame.valid()) sender.discard_frame(frame);
+            if (commit_result.error().code == nozzle::ErrorCode::Timeout) {
+                if (retry_busy()) continue;
+                result.failure_reason = "commit_busy_timeout";
+                break;
+            }
             result.failure_reason = "commit_frame_failed:" + commit_result.error().message;
             break;
         }
         result.published_count = result.published_count + 1u;
         std::this_thread::sleep_for(std::chrono::milliseconds(options.interval_ms));
+        progress_start = std::chrono::steady_clock::now();
     }
 
     result.passed = result.published_count == options.frame_count;
